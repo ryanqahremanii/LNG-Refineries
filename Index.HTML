@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GCC LNG Direct Producer Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals & Deep Teal -->
+    <!-- Application Structure Plan: A top-down, thematic dashboard structure was chosen to guide the user from a high-level summary to specific details. The flow is: 1) Executive Overview & KPIs for an immediate snapshot. 2) Interactive Country Capacity Chart for visual comparison. 3) Filterable Producer Profiles for detailed exploration. This structure is superior to a static report as it allows users to actively query the data (e.g., click a country to see its producers), making the information more digestible and engaging. The primary interaction is linking the chart clicks to the producer filter, creating a seamless analytical path. -->
+    <!-- Visualization & Content Choices: 
+    - Report Info: Total production capacity, number of producers. -> Goal: Inform. -> Viz/Method: KPI Cards (HTML/Tailwind). -> Interaction: None (static display). -> Justification: Provides immediate, high-impact metrics at a glance.
+    - Report Info: LNG capacity per country. -> Goal: Compare. -> Viz/Method: Horizontal Bar Chart (Chart.js/Canvas). -> Interaction: Click on a country's bar to filter the producer list. -> Justification: A horizontal bar chart is ideal for comparing discrete categories and clearly displays country dominance. The click interaction connects the macro view to the micro details.
+    - Report Info: Detailed producer data table. -> Goal: Organize & Inform. -> Viz/Method: Interactive Producer Cards (HTML/Tailwind/JS). -> Interaction: Filter by country via dropdown or chart click; expand/collapse cards to view details. -> Justification: Cards are more responsive and scannable than a wide table. Progressive disclosure (expand/collapse) prevents information overload.
+    - Report Info: Supplier analysis text. -> Goal: Conclude/Summarize. -> Viz/Method: Formatted text section with highlighted callouts. -> Interaction: None. -> Justification: Presents the final analysis clearly, with visual emphasis on the key takeaways.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF8;
+            color: #333D4B;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .card-enter {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+        }
+        .card-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .nav-link {
+            transition: color 0.2s;
+            cursor: pointer;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: #047857;
+            border-bottom: 2px solid #047857;
+            padding-bottom: 4px;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #F1EFEA;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #D1C7BA;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #B9AD9E;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div id="app" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <header class="text-center mb-12">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-800">GCC LNG Direct Producer Analysis</h1>
+            <p class="mt-4 text-lg text-gray-600">An interactive dashboard of primary Liquefied Natural Gas producers in the Gulf region.</p>
+        </header>
+
+        <nav class="flex justify-center space-x-6 sm:space-x-10 mb-12 border-b pb-3">
+            <a data-target="overview" class="nav-link text-gray-600 font-medium active">Dashboard</a>
+            <a data-target="producers" class="nav-link text-gray-600 font-medium">Producer Profiles</a>
+            <a data-target="analysis" class="nav-link text-gray-600 font-medium">Supplier Analysis</a>
+        </nav>
+
+        <main>
+            <!-- Section 1: Overview & Dashboard -->
+            <section id="overview" class="space-y-12">
+                <div>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-4">Executive Overview</h2>
+                    <p class="text-gray-700 leading-relaxed max-w-4xl">
+                        This section provides a high-level summary of the Gulf Cooperation Council's (GCC) Liquefied Natural Gas (LNG) sector. The GCC stands as a cornerstone of the global LNG market, characterized by massive production capacities, strategic investments in infrastructure, and state-led entities that control the entire value chain. The interactive elements below allow for a quick comparison of national capacities and provide key metrics for the entire region.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-500">Total GCC LNG Capacity</h3>
+                        <p id="total-capacity" class="text-4xl font-bold text-teal-700 mt-2">--</p>
+                        <p class="text-gray-500">Million Tonnes Per Annum (MTPA)</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-500">Primary Producer Facilities</h3>
+                        <p id="total-producers" class="text-4xl font-bold text-teal-700 mt-2">--</p>
+                         <p class="text-gray-500">Across the GCC Region</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <h3 class="text-lg font-semibold text-gray-500">Top Producer Nation</h3>
+                        <p id="top-producer" class="text-4xl font-bold text-teal-700 mt-2">--</p>
+                        <p class="text-gray-500">By Production Capacity</p>
+                    </div>
+                </div>
+                
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                     <h3 class="text-2xl font-bold text-gray-800 text-center mb-4">LNG Production Capacity by Country (MTPA)</h3>
+                     <p class="text-center text-gray-600 mb-6">This chart visualizes the total direct LNG production capacity for each GCC nation. Click on a country's bar to filter the detailed producer profiles below, allowing for a focused analysis of national assets.</p>
+                    <div class="chart-container">
+                        <canvas id="capacityChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 2: Producer Profiles -->
+            <section id="producers" class="space-y-8 mt-16">
+                <div>
+                    <h2 class="text-3xl font-bold text-gray-800">Producer Profiles</h2>
+                    <p class="text-gray-700 leading-relaxed max-w-4xl mt-4">
+                        Explore the detailed profiles of each primary LNG production facility in the GCC. The list can be filtered by country using the dropdown menu or by clicking on the chart in the dashboard. Each card provides key operational and contact information for the direct producers, excluding all traders and intermediaries. Click on a profile card to expand and view more details.
+                    </p>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <label for="country-filter" class="font-semibold">Filter by Country:</label>
+                    <select id="country-filter" class="block w-full max-w-xs rounded-md border-gray-300 shadow-sm focus:border-teal-500 focus:ring-teal-500">
+                        <option value="all">All GCC Countries</option>
+                    </select>
+                </div>
+
+                <div id="producer-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Producer cards will be injected here by JS -->
+                </div>
+            </section>
+
+            <!-- Section 3: Supplier Analysis -->
+            <section id="analysis" class="mt-16">
+                <h2 class="text-3xl font-bold text-gray-800">Supplier Analysis</h2>
+                 <p class="text-gray-700 leading-relaxed max-w-4xl mt-4">
+                    This analysis identifies the most significant and reliable direct LNG suppliers within the GCC based on the compiled data. The assessment focuses on production scale, operational stability, and state backing, which are critical factors for securing large-scale, long-term supply agreements.
+                </p>
+                <div class="mt-6 bg-white p-8 rounded-xl shadow-sm border border-gray-200 space-y-6 text-gray-700 leading-relaxed">
+                    <div class="p-6 bg-teal-50 border-l-4 border-teal-500 rounded-r-lg">
+                        <h3 class="font-bold text-xl text-teal-800">Most Prominent Supplier: Qatar (QatarEnergy)</h3>
+                        <p class="mt-2">With a staggering production capacity of 77 MTPA from its Ras Laffan facilities, Qatar, through its state-owned enterprise QatarEnergy, is unequivocally the most dominant and reliable direct supplier of LNG in the GCC and globally. The stability of its state ownership, massive integrated production trains, and extensive, dedicated fleet of LNG carriers ensure unmatched reliability and scale. The upcoming North Field Expansion (NFE) project will further cement this position, promising to elevate capacity to 126 MTPA by 2027.</p>
+                    </div>
+                    <div class="p-6 bg-sky-50 border-l-4 border-sky-500 rounded-r-lg">
+                        <h3 class="font-bold text-xl text-sky-800">Key Supplier: UAE (ADNOC)</h3>
+                        <p class="mt-2">The United Arab Emirates, represented by ADNOC, is another top-tier supplier. The Das Island facility (ADNOC LNG) is a long-standing and reliable production hub. ADNOC's strong state backing, strategic location outside the Strait of Hormuz for its upcoming Fujairah LNG terminal, and continuous investment in technology and efficiency make it a highly secure and significant source of LNG. Their move to build a new, larger facility in Fujairah signals a strong commitment to expanding their market share.</p>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-lg text-gray-800">Other Significant Producers</h3>
+                        <p>Oman LNG holds a significant position with a respectable capacity and a long history of reliable operations, backed by a consortium of the Omani government and major international energy companies. Saudi Arabia's involvement via Saudi Aramco, while smaller in the LNG-specific context compared to its crude oil dominance, is still notable. As a global energy leader, any facility operated by Aramco is inherently stable and reliable.</p>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-lg text-gray-800">Conclusion for Supply Sourcing</h3>
+                        <p>For large-scale and long-term global supply needs, QatarEnergy is the primary target due to its sheer volume and established infrastructure. ADNOC represents a robust secondary option, offering diversification and strategic advantages. Oman LNG is a reliable third choice. All identified producers are state-backed and represent the most direct and secure sources for LNG procurement in the region, completely bypassing the reseller market.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+    </div>
+
+    <script>
+        const producerData = [
+            {
+                "name": "Qatargas (North Field Bravo, QG1, QG2, QG3, QG4)",
+                "location": "Qatar",
+                "owner": "QatarEnergy",
+                "website": "https://www.qatarenergy.qa",
+                "email": "N/A",
+                "phone": "+974 4013 4895",
+                "status": "DIRECT PRODUCER",
+                "capacity": 77,
+                "products": "LNG, Natural Gas Liquids (NGL), Condensate, Helium",
+                "notes": "World's largest LNG producer. Currently undergoing the massive North Field Expansion (NFE) project to boost capacity to 126 MTPA by 2027."
+            },
+            {
+                "name": "ADNOC LNG (Das Island)",
+                "location": "UAE",
+                "owner": "ADNOC (Abu Dhabi National Oil Company)",
+                "website": "https://www.adnoc.ae",
+                "email": "N/A",
+                "phone": "+971 2 707 0000",
+                "status": "DIRECT PRODUCER",
+                "capacity": 5.8,
+                "products": "LNG, Liquefied Petroleum Gas (LPG), Paraffinic Naphtha, Sulphur",
+                "notes": "One of the longest-operating LNG facilities in the region. ADNOC is planning a new 9.6 MTPA facility in Fujairah."
+            },
+            {
+                "name": "Oman LNG",
+                "location": "Oman",
+                "owner": "Oman LNG L.L.C. (Govt. of Oman, Shell, TotalEnergies, etc.)",
+                "website": "https://omanlng.co.om",
+                "email": "info@omanlng.co.om",
+                "phone": "+968 24 609000",
+                "status": "DIRECT PRODUCER",
+                "capacity": 10.4,
+                "products": "LNG, Natural Gas Liquids (NGL)",
+                "notes": "A key producer with a strong, diverse ownership structure and a long-term track record of reliable supply to Asian and European markets."
+            },
+            {
+                "name": "Jazan Refinery and Petrochemical Complex",
+                "location": "Saudi Arabia",
+                "owner": "Saudi Aramco",
+                "website": "https://www.aramco.com",
+                "email": "N/A",
+                "phone": "+966 13 872 0115",
+                "status": "DIRECT PRODUCER",
+                "capacity": "N/A",
+                "products": "Refined petroleum products, Industrial gases, LNG (primarily for industrial use)",
+                "notes": "While a massive complex, its LNG production is smaller scale and integrated with industrial gas production, not primarily for large-scale export like Qatar or UAE."
+            },
+             {
+                "name": "Bahrain LNG (BLNG) Import Terminal",
+                "location": "Bahrain",
+                "owner": "NOGA Holdings",
+                "website": "https://www.nogaholding.com",
+                "email": "info@nogaholding.com",
+                "phone": "+973 1756 6666",
+                "status": "N/A",
+                "capacity": "N/A",
+                "products": "Regasified LNG",
+                "notes": "This is an import and regasification terminal, not a direct production facility. Included for clarity to distinguish from producers."
+            },
+            {
+                "name": "KNPC Mina Al-Ahmadi Refinery",
+                "location": "Kuwait",
+                "owner": "Kuwait National Petroleum Company (KNPC)",
+                "website": "https://www.knpc.com",
+                "email": "N/A",
+                "phone": "+965 2398 9900",
+                "status": "N/A",
+                "capacity": "N/A",
+                "products": "Refined petroleum products, LPG",
+                "notes": "Focuses on oil refining and LPG production. Kuwait is primarily an LNG importer via the Al-Zour LNG Import Terminal."
+            }
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const directProducers = producerData.filter(p => p.status === 'DIRECT PRODUCER' && p.capacity !== 'N/A');
+            
+            const producerGrid = document.getElementById('producer-grid');
+            const countryFilter = document.getElementById('country-filter');
+            const navLinks = document.querySelectorAll('.nav-link');
+
+            const countryCapacities = directProducers.reduce((acc, producer) => {
+                acc[producer.location] = (acc[producer.location] || 0) + producer.capacity;
+                return acc;
+            }, {});
+
+            const countries = Object.keys(countryCapacities);
+            const capacities = Object.values(countryCapacities);
+            
+            const sortedCountries = countries.map((country, index) => ({
+                name: country,
+                capacity: capacities[index]
+            })).sort((a, b) => b.capacity - a.capacity);
+
+            const sortedCountryNames = sortedCountries.map(c => c.name);
+            const sortedCountryCaps = sortedCountries.map(c => c.capacity);
+
+            const totalCapacity = directProducers.reduce((sum, p) => sum + p.capacity, 0);
+            document.getElementById('total-capacity').textContent = totalCapacity.toFixed(1);
+            document.getElementById('total-producers').textContent = directProducers.length;
+            document.getElementById('top-producer').textContent = sortedCountryNames[0] || 'N/A';
+
+            function createProducerCard(producer) {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-5 rounded-xl shadow-sm border border-gray-200 cursor-pointer transition-shadow hover:shadow-md card-enter';
+                card.dataset.country = producer.location;
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h4 class="text-xl font-bold text-gray-800">${producer.name}</h4>
+                            <p class="text-gray-500">${producer.location}</p>
+                        </div>
+                        <div class="text-right flex-shrink-0 ml-4">
+                            <p class="text-2xl font-bold text-teal-700">${producer.capacity} <span class="text-base font-medium">MTPA</span></p>
+                        </div>
+                    </div>
+                    <div class="text-sm text-gray-600 mt-4">
+                        <strong>Owner:</strong> ${producer.owner}
+                    </div>
+                    <div class="details hidden mt-4 pt-4 border-t space-y-2 text-sm">
+                        <p><strong>Primary Products:</strong> ${producer.products}</p>
+                        <p><strong>Website:</strong> <a href="${producer.website}" target="_blank" class="text-teal-600 hover:underline">${producer.website}</a></p>
+                        <p><strong>Phone:</strong> ${producer.phone}</p>
+                        <p><strong>Email:</strong> ${producer.email}</p>
+                        <div class="mt-2 p-3 bg-gray-50 rounded-lg">
+                            <p class="font-semibold">Notes:</p>
+                            <p>${producer.notes}</p>
+                        </div>
+                    </div>
+                    <div class="text-center mt-4 text-xs text-teal-700 font-semibold">
+                        <span>▼ Show Details</span>
+                    </div>
+                `;
+
+                card.addEventListener('click', () => {
+                    const details = card.querySelector('.details');
+                    const indicator = card.querySelector('span');
+                    details.classList.toggle('hidden');
+                    indicator.textContent = details.classList.contains('hidden') ? '▼ Show Details' : '▲ Hide Details';
+                });
+                
+                return card;
+            }
+            
+            function renderProducers(filter = 'all') {
+                producerGrid.innerHTML = '';
+                const filteredData = (filter === 'all')
+                    ? producerData
+                    : producerData.filter(p => p.location === filter);
+
+                filteredData.forEach(producer => {
+                    const card = createProducerCard(producer);
+                    producerGrid.appendChild(card);
+                    setTimeout(() => card.classList.add('card-enter-active'), 10);
+                });
+            }
+
+            sortedCountryNames.forEach(country => {
+                const option = document.createElement('option');
+                option.value = country;
+                option.textContent = country;
+                countryFilter.appendChild(option);
+            });
+
+            countryFilter.addEventListener('change', (e) => {
+                renderProducers(e.target.value);
+            });
+            
+            const ctx = document.getElementById('capacityChart').getContext('2d');
+            const capacityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedCountryNames,
+                    datasets: [{
+                        label: 'LNG Capacity (MTPA)',
+                        data: sortedCountryCaps,
+                        backgroundColor: '#047857',
+                        borderColor: '#065f46',
+                        borderWidth: 1,
+                        borderRadius: 5,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: '#333D4B',
+                            titleFont: { size: 16 },
+                            bodyFont: { size: 14 },
+                            padding: 12,
+                            cornerRadius: 6,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Capacity: ${context.raw} MTPA`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: {
+                                display: true,
+                                color: '#E5E7EB'
+                            },
+                             title: {
+                                display: true,
+                                text: 'Million Tonnes Per Annum (MTPA)',
+                                font: {
+                                    size: 14,
+                                    weight: '500'
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const countryIndex = elements[0].index;
+                            const country = sortedCountryNames[countryIndex];
+                            countryFilter.value = country;
+                            renderProducers(country);
+                            document.getElementById('producers').scrollIntoView({ behavior: 'smooth' });
+                        }
+                    },
+                    onHover: (event, chartElement) => {
+                        event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+                    }
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const targetId = e.target.getAttribute('data-target');
+                    document.getElementById(targetId).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                    
+                    navLinks.forEach(l => l.classList.remove('active'));
+                    e.target.classList.add('active');
+                });
+            });
+
+            renderProducers();
+        });
+    </script>
+</body>
+</html>
